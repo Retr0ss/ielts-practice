@@ -6,7 +6,7 @@
 
 | 检查 | 结果 |
 | --- | --- |
-| `node developer/tests/private/worker.test.mjs` | 4/4 通过：版本冲突/幂等/墓碑、输入校验、静态资源保护/CSRF/退出/密钥轮换、收集凭证权限 |
+| `node developer/tests/private/worker.test.mjs` | 5/5 通过：版本冲突/幂等/墓碑、输入校验、静态资源保护/CSRF/退出/密钥轮换、收集凭证权限、未配置时仅开放无状态设置页 |
 | `npm test --prefix developer`（配置 Chromium 路径） | 837/837 通过 |
 | `node developer/tests/js/appDataV2.test.js` | 62 项通过 |
 | `node scripts/build-bundles.mjs --check` | 18 个 bundle 与源码一致 |
@@ -15,6 +15,8 @@
 | `ATLAS_TEST_BROWSERS=chromium python developer/tests/private/browser_flow.py` | 通过：393×852 手机尺寸、两个独立浏览器存储、离线修改/冲突选择、练习与注释往返、本地 CAS、删除同步、JSON 备份恢复、基础词典、Markdown、HTML 注入防护、重载持久化、匿名资源拦截 |
 | `npm run build --prefix cloud` | 通过；仅打包运行文件，过滤隐藏文件，检查资源 25 MiB 限制 |
 | `git diff --check` | 通过 |
+| `python developer/tests/private/setup_flow.py` | 手机尺寸 Chromium 通过：随机访问码与摘要匹配、再次生成得到新值、未发送网络请求、未写浏览器存储或 URL |
+| `wrangler deploy --dry-run --config cloud/wrangler.jsonc` | 用户提供的真实标识配置通过打包检查（683 个静态文件）；没有发布或访问远端数据库 |
 
 ## 尚未通过的全局检查
 
@@ -28,4 +30,4 @@
 - 未做真实 iPhone Safari 测试，未验证手机后台挂起、长时间音频、真实快捷指令网络调用或生产 Cloudflare 网络/免费额度表现。
 - 没有模型 API 调用，也没有连接真实墨墨账号。
 - Wrangler 本地验证采用 HTTPS。重建静态输出目录后应重启本地 dev server，避免开发工具保留旧目录资源索引；线上使用不可变部署产物。
-- 待提供 Cloudflare 账号授权后，仍需配置真实 D1 标识、私人访问码摘要，并验证匿名访问、两设备持久化和备份恢复。
+- 用户提供的真实账号/D1 标识已写入生产配置；远端创建/绑定/迁移仍需由已授权的 Cloudflare 构建身份执行。还需配置私人访问码摘要，并验证匿名访问、两设备持久化和备份恢复。

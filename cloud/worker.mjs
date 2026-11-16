@@ -123,6 +123,10 @@ async function login(request, env) {
 
 async function route(request, env) {
     const url = new URL(request.url);
+    // Stateless browser-only random-code generator. It cannot read or write any
+    // account settings/data and must work before OWNER_ACCESS_HASH is configured.
+    const setupFiles = ['/learn/setup.html', '/learn/setup.js', '/learn/style.css'];
+    if (setupFiles.includes(url.pathname) && ['GET', 'HEAD'].includes(request.method)) return env.ASSETS.fetch(request);
     if (!env.DB || !/^[a-f0-9]{64}$/.test(env.OWNER_ACCESS_HASH || '')) return json({ error: '私人站点尚未配置完成' }, 503);
     if (url.pathname === '/api/login' && request.method === 'POST') return login(request, env);
     // Optional append-only shortcut endpoint: no login/read/delete privileges.

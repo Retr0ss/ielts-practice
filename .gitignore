@@ -59,7 +59,7 @@ node_modules
 /cloud/.dev.vars*
 /cloud/.wrangler/
 /.wrangler/
-/cloud/wrangler.jsonc
+/cloud/wrangler.local.jsonc
 /.env*
 !/cloud/package-lock.json
 # Local dependency and Python caches

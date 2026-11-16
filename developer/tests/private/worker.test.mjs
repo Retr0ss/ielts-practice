@@ -103,3 +103,18 @@ test('shortcut token only appends notes; retries do not duplicate; token cannot 
         assert.equal((await call('/assets/bank.js')).status, 401);
     } finally { db.close(); }
 });
+
+test('pre-configuration only exposes the stateless setup helper; learning data stays closed', async () => {
+    const fetched = [];
+    const env = { ASSETS: { async fetch(request) { fetched.push(new URL(request.url).pathname); return new Response('setup'); } } };
+    for (const path of ['/learn/setup.html', '/learn/setup.js', '/learn/style.css']) {
+        const response = await worker.fetch(new Request('https://atlas.test' + path), env);
+        assert.equal(response.status, 200);
+        assert.match(response.headers.get('Cache-Control'), /no-store/);
+    }
+    for (const path of ['/api/changes', '/index.html', '/learn/index.html', '/assets/bank.js', '/learn/setup.html/extra']) {
+        assert.equal((await worker.fetch(new Request('https://atlas.test' + path), env)).status, 503);
+    }
+    assert.equal((await worker.fetch(new Request('https://atlas.test/learn/setup.html', { method: 'POST' }), env)).status, 503);
+    assert.equal(fetched.length, 3);
+});

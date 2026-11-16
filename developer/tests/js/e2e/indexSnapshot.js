@@ -1001,6 +1001,8 @@ window.__APP_INDEX_HTML_SNAPSHOT__ = `<!doctype html>
 
         <!-- 入口与懒加载代理 -->
         <script src="js/bundles/legacy-app.bundle.js"></script>
+        <script src="js/private/store.js" defer></script>
+        <script src="js/private/cloudSync.js" defer></script>
 
         <!-- 成就系统模态框 -->
         <div id="achievements-modal" class="theme-modal">

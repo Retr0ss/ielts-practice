@@ -55,6 +55,13 @@ developer/tests/reports/listeningpractice-scan.md
 !developer/tests/e2e/fixtures/睡着过项目组(9.4)\[134篇]/
 !developer/tests/e2e/fixtures/睡着过项目组(9.4)\[134篇]/**
 node_modules
+/.dev.vars*
+/cloud/.dev.vars*
+/cloud/.wrangler/
+/.wrangler/
+/cloud/wrangler.jsonc
+/.env*
+!/cloud/package-lock.json
 # Local dependency and Python caches
 .pnpm-store/
 __pycache__/

@@ -8749,3 +8749,8 @@ body.blue-dark-mode .practice-review-load__bar--empty {
 .diagnostic-settings-panel textarea { box-sizing: border-box; width: 100%; color: inherit; background: transparent; padding: 0.75rem; }
 .diagnostic-settings-panel :is(button, input, textarea, summary):focus-visible { outline: 3px solid #5679dd; outline-offset: 3px; }
 .diagnostic-settings-panel button:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* Private cloud mode inserts this bar only after server-side authentication. */
+.atlas-private-bar { display: flex; align-items: center; justify-content: center; gap: 14px; flex-wrap: wrap; padding: 10px 16px; background: #173c37; color: #fff; font: 14px/1.5 -apple-system, sans-serif; position: relative; z-index: 100; }
+.atlas-private-bar a { color: #fff; }
+.atlas-private-bar button { min-height: 36px; padding: 4px 12px; background: transparent; color: #fff; border: 1px solid #ffffff70; border-radius: 8px; font: inherit; }

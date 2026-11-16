@@ -416,6 +416,10 @@ def _check_v2_data_architecture() -> Tuple[bool, dict]:
             # A3 owns a separate diagnostic database and lifecycle tombstone,
             # intentionally outside learning-data transactions and backup catalogs.
             return True
+        if relative == "js/private/store.js" and label == "raw-storage":
+            # Owns only the private notebook and durable network outbox. Existing
+            # practice databases are accessed exclusively through AppData's CAS API.
+            return token == "global.indexedDB."
         if relative == "js/core/externalBackupService.js" and label == "old-global" and "ExternalBackupService" in token:
             return True
         if relative == "js/core/siteDataReset.js" and label == "raw-storage":

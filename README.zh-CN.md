@@ -1,5 +1,7 @@
 # IELTS Atlas / IELTS Practice
 
+本 Fork 的私人学习版开发与免费托管配置见 [cloud/README.md](cloud/README.md)，当前验证结果见 [cloud/VALIDATION.md](cloud/VALIDATION.md)。
+
 [English](README.md) | **简体中文**
 
 [v0.6.3.2 更新说明](RELEASE_NOTE-0.6.3.2.md)

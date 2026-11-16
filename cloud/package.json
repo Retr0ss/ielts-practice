@@ -1,0 +1,14 @@
+{
+  "name": "ielts-atlas-private",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test ../developer/tests/private/*.test.mjs",
+    "dev": "wrangler dev --config wrangler.jsonc",
+    "deploy": "npm run build && wrangler deploy --config wrangler.jsonc"
+  },
+  "devDependencies": {
+    "wrangler": "4.162.0"
+  }
+}

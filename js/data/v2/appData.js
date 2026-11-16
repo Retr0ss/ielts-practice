@@ -1225,6 +1225,46 @@
     }
 
     const practice = Object.freeze({
+        // Cloud synchronization uses the same canonical writer and an explicit
+        // local revision token. A network response must not overwrite a practice
+        // or annotation committed while the response was in flight.
+        async readForSync(recordId) {
+            await ready;
+            const id = String(recordId || '');
+            if (!id) throw new AppDataError('VALIDATION', 'recordId is required');
+            const layers = await practiceLayersForUpsert(id);
+            const present = layers.summary && !layers.summary.deleted;
+            return {
+                record: present ? withCurrentExamIds(joinPracticeRecord(
+                    upgradeBrowseSummary(layers.summary.data, layers.detail?.data),
+                    layers.detail?.data, layers.annotations?.data, 'full')) : null,
+                revisions: { summary: entityRevision(layers.summary), detail: entityRevision(layers.detail), annotations: entityRevision(layers.annotations) }
+            };
+        },
+        async applyFromSync(command) {
+            await ready; assertObject(command, 'sync command is required');
+            const id = String(command.recordId || '');
+            if (!id || !command.expectedRevisions || (command.record && String(command.record.id) !== id)) {
+                throw new AppDataError('VALIDATION', 'Sync requires a matching record id and local revisions');
+            }
+            const existing = await practiceLayersForUpsert(id);
+            for (const field of ['summary', 'detail', 'annotations']) {
+                if (command.expectedRevisions[field] !== entityRevision(existing[field])) throw new AppDataError('CONFLICT', 'Local practice changed during cloud synchronization');
+            }
+            let operations;
+            let planChange;
+            if (command.record) {
+                const layers = splitPracticeRecord(command.record);
+                operations = practiceUpserts(id, layers, existing);
+                planChange = await reviewPlanChange(layers, command.record, existing);
+            } else {
+                operations = [['summary', 'practiceSummaries'], ['detail', 'practiceDetails'], ['annotations', 'practiceAnnotations']]
+                    .map(([field, store]) => ({ type: 'delete', store, recordId: id, expectedRevision: entityRevision(existing[field]) }));
+                const plans = await readReviewPlans();
+                planChange = { logicalKey: REVIEW_PLANS_KEY, data: asArray(plans.data).filter(plan => plan.recordId !== id), expectedRevision: plans.envelope?.revision || 0 };
+            }
+            return kernel.mutateEntities(operations, { ...mutationOptions(command, 'practice-cloud', command), documentChanges: [planChange] });
+        },
         async list(options = {}) {
             await ready;
             const projection = String(options.projection || 'full').toLowerCase();

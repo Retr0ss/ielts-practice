@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "appVersion": "0.6.3.2",
-  "buildId": "sha256:0f9870571d3394cb6dc58cb751db6bbfe4c03b1689f5ed8772d047e238256175",
+  "buildId": "sha256:dd98fa2236a0b87d432c7a9134af8173631f6da7d29874fe028557f3abf43667",
   "mappingPath": "assets/generated/diagnostics/build-manifest.json",
   "readingResources": [
     "assets/generated/reading-exams/p1-high-01.js",
@@ -626,7 +626,7 @@
     },
     {
       "path": "js/private/cloudSync.js",
-      "sha256": "c77c47074992e4b2b7291e1e576050f887a52a9f18cb849e50629ecc17fb6278"
+      "sha256": "762143f722fd561fb35d875e654a8ef08d05a9ed7d8169983f84f223e5e58b2a"
     },
     {
       "path": "js/private/store.js",
@@ -634,11 +634,11 @@
     },
     {
       "path": "learn/analysis.js",
-      "sha256": "a613c5ea852ef1b1c0ebd5a950410535ea1f78ce3bb878d34bb8df73e921cc78"
+      "sha256": "653cd4229a7a5e8509957095836fd450fb5febfe0cc404df3d216c0df21d8523"
     },
     {
       "path": "learn/index.html",
-      "sha256": "dc071eed938c7366685028f77b6a9a25bb47085d897fd1571c98f50b3a8f62c2"
+      "sha256": "7c8fbff419991ca20db009d56e71c319f05c4b5641c405f2fef85e4ec8fdd1a7"
     },
     {
       "path": "learn/notebook.js",

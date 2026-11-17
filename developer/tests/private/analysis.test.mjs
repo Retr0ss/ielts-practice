@@ -13,6 +13,99 @@ const openaiSuccess = () => Response.json({status:'completed',output:[
     {type:'message',role:'assistant',status:'completed',content:[{type:'output_text',text:JSON.stringify(explanation)}]}
 ]});
 
+test('read-only DeepSeek check verifies models and availability without model calls or quota writes',async()=>{
+    const DB=createDatabase();const requests=[];const env=envFor(DB);
+    const service=createAnalysisService({fetchImpl:async(url,options)=>{
+        requests.push(url);assert.equal(options.method,'GET');assert.equal(options.body,undefined);
+        assert.equal(options.headers.Authorization,'Bearer '+env.DEEPSEEK_API_KEY);
+        return url.endsWith('/models') ? Response.json({data:[{id:'deepseek-flash'}]})
+            : Response.json({is_available:true,balance_infos:[{total_balance:'do-not-expose-account-balance'}]});
+    }});
+    try{
+        const check=await service.check(env,{provider:'deepseek',text:'must not be sent'});
+        assert.equal(check.ok,true);assert.equal(check.balance,'available');
+        assert.deepEqual(requests,['https://api.deepseek.com/models','https://api.deepseek.com/user/balance']);
+        assert.equal((await service.settings(env)).usage.used,0);
+        assert.ok(!JSON.stringify(check).includes(env.DEEPSEEK_API_KEY));assert.ok(!JSON.stringify(check).includes('do-not-expose'));
+    }finally{DB.close();}
+});
+
+test('invalid key header characters are diagnosed before fetch or quota reservation',async()=>{
+    for(const key of ['中文测试密钥','sk-test\ncontinued','Bearer sk-test']){
+        const DB=createDatabase();let calls=0;
+        const service=createAnalysisService({fetchImpl:async()=>{calls++;return success();}});
+        const env={...envFor(DB),DEEPSEEK_API_KEY:key};
+        try{
+            const check=await service.check(env,{provider:'deepseek'});assert.equal(check.code,'INVALID_KEY_FORMAT');assert.equal(check.stage,'configuration');
+            await assert.rejects(service.analyze(env,input()),{code:'INVALID_KEY_FORMAT'});
+            assert.equal((await service.settings(env)).providers[0].enabled,false);
+            assert.equal((await service.settings(env)).usage.used,0);assert.equal(calls,0);
+            assert.ok(!JSON.stringify(check).includes(key));
+        }finally{DB.close();}
+    }
+});
+
+test('connection checks distinguish authorization, balance, model, rate and transport failures safely',async()=>{
+    for(const [status,code] of [[401,'PROVIDER_AUTH'],[402,'PROVIDER_BALANCE'],[404,'MODEL_UNAVAILABLE'],[429,'PROVIDER_LIMIT']]){
+        const DB=createDatabase();const service=createAnalysisService({fetchImpl:async()=>new Response('private provider details',{status})});
+        try{const result=await service.check(envFor(DB),{provider:'deepseek'});assert.equal(result.code,code);assert.equal(result.httpStatus,status);assert.ok(!JSON.stringify(result).includes('private provider'));}
+        finally{DB.close();}
+    }
+    for(const payload of [{is_available:false},{is_available:'invalid'}]){
+        const DB=createDatabase();const service=createAnalysisService({fetchImpl:async url=>url.endsWith('/models')?Response.json({data:[{id:'deepseek-flash'}]}):Response.json(payload)});
+        try{const result=await service.check(envFor(DB),{provider:'deepseek'});assert.equal(result.ok,false);assert.equal(result.stage,'balance');assert.equal(result.code,payload.is_available===false?'PROVIDER_BALANCE':'CHECK_RESULT_INVALID');}
+        finally{DB.close();}
+    }
+    const DB=createDatabase();const cause=Object.assign(new Error('private-provider-key-and-stack'),{status:502});
+    const service=createAnalysisService({fetchImpl:async()=>{throw cause;}});
+    try{const check=await service.check(envFor(DB),{provider:'deepseek'});assert.equal(check.code,'CHECK_NETWORK');assert.ok(!JSON.stringify(check).includes('private-provider'));}
+    finally{DB.close();}
+});
+
+test('OpenAI and custom provider checks only read their own models, including when generation is disabled',async()=>{
+    for(const envFields of [{OPENAI_API_KEY:'test-only-openai-key',AI_PROVIDER:'openai',AI_DAILY_LIMIT:'0'}, {DEEPSEEK_API_KEY:'test-only-deepseek-key',AI_BASE_URL:'https://custom.test/v1'}]){
+        const DB=createDatabase();let calls=0;const openai=envFields.AI_PROVIDER==='openai';
+        const service=createAnalysisService({fetchImpl:async(url,options)=>{
+            calls++;assert.equal(options.method,'GET');
+            assert.equal(url,openai?'https://api.openai.com/v1/models':'https://custom.test/v1/models');
+            return Response.json({data:[{id:openai?'gpt-5.4-mini':'deepseek-flash'}]});
+        }});
+        try{const check=await service.check({DB,...envFields},{});assert.equal(check.ok,true);assert.equal(check.balance,'not_checked');assert.equal(calls,1);}
+        finally{DB.close();}
+    }
+});
+
+test('analysis transport and response-read failures retain their stage without leaking exceptions',async()=>{
+    for(const stage of ['connect','read']){
+        const DB=createDatabase();const cause=Object.assign(new Error('private-key-example'),{status:502});
+        const service=createAnalysisService({fetchImpl:async()=>{
+            if(stage==='connect')throw cause;
+            return new Response(new ReadableStream({start(controller){controller.error(cause);}}));
+        }});
+        try{
+            await assert.rejects(service.analyze(envFor(DB),input()),err=>err.code===(stage==='connect'?'PROVIDER_NETWORK':'PROVIDER_READ')&&err.diagnostic.stage===stage&&!err.message.includes('private-key'));
+        }finally{DB.close();}
+    }
+});
+
+test('a completed paid response is delivered when cache or quota-refresh persistence fails',async()=>{
+    for(const failingStage of ['cache','usage']){
+        const DB=createDatabase();let calls=0;
+        const unstable={...DB,prepare(sql){
+            if ((failingStage==='cache'&&sql.startsWith("UPDATE analysis_requests SET status='complete'")) || (failingStage==='usage'&&sql.startsWith('SELECT count(*) AS used'))) {
+                return {bind(){return this;},async run(){throw new Error('private-database-error');},async first(){throw new Error('private-database-error');}};
+            }
+            return DB.prepare(sql);
+        }};
+        const service=createAnalysisService({fetchImpl:async()=>{calls++;return success();}});
+        try{
+            const result=await service.analyze(envFor(unstable),input());assert.equal(result.status,'complete');assert.match(result.analysis,/政策/);assert.ok(result.warning);assert.equal(result.usage,null);
+            assert.ok(!JSON.stringify(result).includes('private-database'));
+            await service.analyze(envFor(DB),input());assert.equal(calls,1);
+        }finally{DB.close();}
+    }
+});
+
 test('OpenAI Responses uses its own key, endpoint, model and strict schema without provider state',async()=>{
     const DB=createDatabase();let calls=0;
     const env={...envFor(DB),OPENAI_API_KEY:'test-only-openai-key',AI_MODEL:'other-deepseek-model',AI_BASE_URL:'https://deepseek-proxy.test/v1',AI_JSON_MODE:'off'};
@@ -203,9 +296,13 @@ test('analysis endpoints require login and same-origin writes; missing key does 
     try{
         assert.equal((await call('/api/analysis/config')).status,401);
         assert.equal((await call('/api/analysis','POST',input())).status,401);
+        assert.equal((await call('/api/analysis/check','POST',{provider:'deepseek'})).status,401);
         const login=await call('/api/login','POST',{accessCode:'owner-test'});const cookie=login.headers.get('set-cookie').split(';')[0];
         const config=await(await call('/api/analysis/config','GET',undefined,cookie)).json();assert.equal(config.enabled,false);
         assert.equal((await call('/api/analysis','POST',input(),cookie,'https://evil.test')).status,403);
+        assert.equal((await call('/api/analysis/check','POST',{provider:'deepseek'},cookie,'https://evil.test')).status,403);
+        const check=await(await call('/api/analysis/check','POST',{provider:'deepseek'},cookie)).json();
+        assert.equal(check.ok,false);assert.equal(check.code,'AI_NOT_CONFIGURED');
         assert.equal((await call('/api/analysis','POST',input(),cookie)).status,503);
         assert.equal((await call('/api/changes','GET',undefined,cookie)).status,200);
     }finally{DB.close();}

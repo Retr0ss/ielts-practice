@@ -88,6 +88,7 @@ test('shortcut token only appends notes; retries do not duplicate; token cannot 
         assert.equal((await call('/api/changes')).status, 401);
         assert.equal((await call('/api/analysis/config')).status, 401);
         assert.equal((await call('/api/analysis', {text:'Policies matter.',category:'grammar',requestId:'capture-cannot-generate'})).status, 401);
+        assert.equal((await call('/api/analysis/check', {provider:'deepseek'})).status, 401);
         assert.equal((await call('/assets/bank.js')).status, 401);
     } finally { db.close(); }
 });

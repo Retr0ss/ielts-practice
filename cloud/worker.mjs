@@ -161,6 +161,7 @@ async function route(request, env) {
     if (!['GET', 'HEAD'].includes(request.method)) sameOrigin(request);
     if (url.pathname === '/api/analysis/config' && request.method === 'GET') return json(await analysisService.settings(env));
     if (url.pathname === '/api/analysis/status' && request.method === 'GET') return json(await analysisService.status(env,url.searchParams.get('id')));
+    if (url.pathname === '/api/analysis/check' && request.method === 'POST') return json(await analysisService.check(env,await body(request)));
     if (url.pathname === '/api/analysis' && request.method === 'POST') {
         const result = await analysisService.analyze(env, await body(request));
         return json(result,result.status === 'pending' ? 202 : 200);
@@ -196,7 +197,7 @@ export default {
     async fetch(request, env) {
         let response;
         try { response = await route(request, env); }
-        catch (error) { response = json({ error: error.status ? error.message : '保存失败，请稍后重试', ...(error.code && error.status ? {code:error.code} : {}) }, error.status || 500); }
+        catch (error) { response = json({ error: error.status ? error.message : '保存失败，请稍后重试', ...(error.code && error.status ? {code:error.code} : {}), ...(error.diagnostic && error.status ? {diagnostic:error.diagnostic} : {}) }, error.status || 500); }
         const secured = new Response(response.body, response);
         secured.headers.set('Cache-Control', 'private, no-store');
         secured.headers.set('X-Content-Type-Options', 'nosniff');

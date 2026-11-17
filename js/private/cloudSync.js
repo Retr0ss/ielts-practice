@@ -27,7 +27,7 @@
             const result = await response.json();
             if (response.status === 401) throw new Error('登录已过期；本地内容已保留，请重新登录');
             if (!response.ok && !(response.status === 409 && Object.hasOwn(result, 'current'))) {
-                throw Object.assign(new Error(result.error || '请求失败'), { status:response.status, code:result.code });
+                throw Object.assign(new Error(result.error || '请求失败'), { status:response.status, code:result.code, diagnostic:result.diagnostic });
             }
             return result;
         } finally { clearTimeout(timeout); requests.delete(controller); }

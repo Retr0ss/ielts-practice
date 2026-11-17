@@ -6,6 +6,10 @@
     const button = $('#analyze');
     const status = $('#analysis-status');
     const provider = $('#analysis-provider');
+    const checkButton = $('#analysis-check');
+    const checkStatus = $('#connection-check-status');
+    let checking = false;
+    let checkEpoch = 0;
     let providers = [];
     let selectedProvider = null;
     let currentUsage = null;
@@ -23,7 +27,9 @@
         const entry = providers.find(item=>item.id === selectedProvider);
         enabled = Boolean(entry?.enabled);
         button.disabled = !enabled || busy;
-        if (!busy) say(enabled ? `${entry.label} · ${entry.model} 已就绪 · ${quota(currentUsage)}` : `${entry?.label || '自动解析'} 尚未配置或已关闭，仍可使用基础词典和手动解析。`);
+        checkButton.disabled = busy || checking;
+        if (!busy) say(entry?.issue==='INVALID_KEY_FORMAT' ? `${entry.label} API Key 格式不正确，请在运行时 Secret 中粘贴原始密钥，不要包含中文、换行或 Bearer 前缀。`
+            : enabled ? `${entry.label} · ${entry.model} 已配置 · ${quota(currentUsage)}` : `${entry?.label || '自动解析'} 尚未配置或已关闭，仍可使用基础词典和手动解析。`);
     }
     async function configure() {
         try {
@@ -48,7 +54,22 @@
     $('#note-text').addEventListener('input',invalidate);
     $('#note-category').addEventListener('change',invalidate);
     window.addEventListener('atlas-note-editor-changed',invalidate);
-    provider.addEventListener('change',()=>{invalidate();updateProvider();});
+    provider.addEventListener('change',()=>{checkEpoch+=1;checkStatus.textContent='';invalidate();updateProvider();});
+    checkButton.addEventListener('click',async()=>{
+        if (checking || busy) return;
+        const selected = provider.value;
+        const epoch = ++checkEpoch;
+        checking = true; checkButton.disabled = true;
+        checkStatus.textContent = '正在检查密钥授权、模型列表和可用余额，不发起付费解析…';
+        try {
+            const result = await app.api('/api/analysis/check',{provider:selected},{timeoutMs:20000});
+            if (selected !== provider.value || epoch !== checkEpoch) return;
+            const stages = {configuration:'配置',models:'模型列表',balance:'余额状态'};
+            checkStatus.textContent = result.message + (result.ok?'':`（${result.code} · ${stages[result.stage] || '连接'}${result.httpStatus ? ' · HTTP '+result.httpStatus : ''}）`);
+        } catch (error) {
+            if (selected === provider.value && epoch === checkEpoch) checkStatus.textContent = '连接检查未完成：'+(error.message || '请稍后再试');
+        } finally {checking=false;checkButton.disabled=busy;}
+    });
     button.addEventListener('click', async () => {
         if (busy || !enabled) return;
         const text = $('#note-text').value.trim();
@@ -57,7 +78,7 @@
         const epoch = ++generation;
         if (!request || request.source !== source) request = {source,id:crypto.randomUUID()};
         const operation = request;
-        busy = true; button.disabled = true; button.textContent = '正在解析…';
+        busy = true; button.disabled = true; checkButton.disabled = true; button.textContent = '正在解析…';
         say('正在分析词义、语法和搭配，原文与现有解析会保留。');
         try {
             let result = await app.api('/api/analysis', {text,category:$('#note-category').value,provider:provider.value,requestId:operation.id}, {timeoutMs:55000});
@@ -71,19 +92,20 @@
             if (result.status === 'pending') { say('解析仍在进行，请稍后再点一次查看结果；不会重复发起模型调用。'); return; }
             if (result.status !== 'complete') { request = null; throw new Error(result.error || '解析未完成，请重试'); }
             preview = {source,analysis:result.analysis,metadata:result.metadata};
+            checkStatus.textContent = '';
             currentUsage = result.usage;
             window.AtlasSentenceTools.render($('#analysis-preview-text'),result.analysis);
             $('#analysis-meta').textContent = `AI 生成 · ${providers.find(item=>item.id===provider.value)?.label || ''} · ${result.metadata.model} · ${new Date(result.metadata.generatedAt).toLocaleString()}${result.cached?' · 复用已有结果':''}`;
             $('#analysis-preview').hidden = false;
-            say('解析完成，请核对预览再填入解析框 · '+quota(result.usage));
+            say(result.warning || '解析完成，请核对预览再填入解析框 · '+quota(result.usage));
         } catch (error) {
             if (epoch !== generation) return;
             if (error.status) request = null;
             // Preserve the id after a transport timeout: the server may still be
             // working. A retry should retrieve that job rather than bill twice.
-            say((error.name==='AbortError'?'等待超时，请稍后再点一次查看结果':error.message || '解析失败，请稍后重试')+'。原文和现有解析已保留。');
+            say((error.name==='AbortError'?'等待超时，请稍后再点一次查看结果':error.message || '解析失败，请稍后重试')+(error.code?' ['+error.code+']':'')+'。原文和现有解析已保留。');
         } finally {
-            busy = false; button.disabled = !enabled; button.textContent = '自动解析';
+            busy = false; button.disabled = !enabled; checkButton.disabled = checking; button.textContent = '自动解析';
         }
     });
     function apply(append) {
@@ -100,7 +122,7 @@
     $('#analysis-append').onclick = ()=>apply(true);
     $('#analysis-replace').onclick = ()=>apply(false);
     $('#analysis-discard').onclick = ()=>{ preview=null; $('#analysis-preview').hidden=true; };
-    window.addEventListener('pagehide',invalidate);
+    window.addEventListener('pagehide',()=>{checkEpoch+=1;checkStatus.textContent='';invalidate();});
     window.addEventListener('pageshow',event=>{if(event.persisted) configure();});
     configure();
 })();

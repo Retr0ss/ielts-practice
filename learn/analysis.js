@@ -38,6 +38,7 @@
         } catch (_) { say('暂时无法连接解析服务，可继续手动记录或刷新页面。'); }
     }
     function invalidate() {
+        window.AtlasSentenceTools.stop();
         generation += 1;
         preview = null;
         request = null;
@@ -71,7 +72,7 @@
             if (result.status !== 'complete') { request = null; throw new Error(result.error || '解析未完成，请重试'); }
             preview = {source,analysis:result.analysis,metadata:result.metadata};
             currentUsage = result.usage;
-            $('#analysis-preview-text').textContent = result.analysis;
+            window.AtlasSentenceTools.render($('#analysis-preview-text'),result.analysis);
             $('#analysis-meta').textContent = `AI 生成 · ${providers.find(item=>item.id===provider.value)?.label || ''} · ${result.metadata.model} · ${new Date(result.metadata.generatedAt).toLocaleString()}${result.cached?' · 复用已有结果':''}`;
             $('#analysis-preview').hidden = false;
             say('解析完成，请核对预览再填入解析框 · '+quota(result.usage));

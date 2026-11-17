@@ -6,6 +6,7 @@
     const { store } = app;
     let editedAt = null;
     let editorOperation = null;
+    const openStudies = new Set();
     const element = (tag, text, className) => {
         const node = document.createElement(tag);
         if (text !== undefined) node.textContent = text;
@@ -44,6 +45,26 @@
             card.append(element('p', `${note.category === 'grammar' ? '语法' : '词汇'} · ${new Date(note.createdAt).toLocaleString()} · ${row.conflict ? '版本待选择' : row.dirty ? '待同步' : '已同步'}`, 'note-meta'), element('h3', note.text));
             if (note.analysis) card.append(element('p', note.analysis));
             if (note.source) card.append(element('p', '来源：' + note.source, 'note-meta'));
+            const study = element('details',undefined,'sentence-study');
+            study.append(element('summary','听读与点词'));
+            const sourceStudy = element('div',undefined,'interactive-text');
+            const analysisStudy = element('div',undefined,'interactive-text');
+            study.append(sourceStudy,analysisStudy);
+            let hydrated = false;
+            const hydrateStudy = () => {
+                if (study.open) {
+                    openStudies.add(note.id);
+                    if (!hydrated) {
+                        window.AtlasSentenceTools.render(sourceStudy,note.text);
+                        window.AtlasSentenceTools.render(analysisStudy,note.analysis);
+                        hydrated = true;
+                    }
+                } else openStudies.delete(note.id);
+            };
+            study.addEventListener('toggle',hydrateStudy);
+            study.open = openStudies.has(note.id);
+            hydrateStudy();
+            card.append(study);
             const actions = element('div', undefined, 'actions');
             actions.append(action('编辑', () => edit(row)), action(note.status === 'mastered' ? '放回待复习' : '已掌握', async () => {
                 await app.saveNote({ ...note, status: note.status === 'mastered' ? 'review' : 'mastered', updatedAt: new Date().toISOString() }); await render();

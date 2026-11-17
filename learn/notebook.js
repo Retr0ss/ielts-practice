@@ -165,5 +165,18 @@
         catch (error) { tell(error.message); }
     };
     window.addEventListener('atlas-private-updated', () => render().catch(error => tell(error.message)));
-    render().catch(error => tell('本地数据库不可用：' + error.message));
+    // This entry uses the shared diagnostic collector, but does not start the
+    // legacy ExamSystemApp that normally calls markReady(). Complete our own
+    // startup only after both databases and the first render are usable.
+    async function initialize() {
+        try {
+            await AppData.ready;
+            await render();
+            window.AppDiagnostics?.markReady();
+        } catch (error) {
+            tell('本地数据库不可用：' + error.message);
+            window.AppDiagnostics?.startupFailed(error);
+        }
+    }
+    initialize();
 })();

@@ -54,6 +54,7 @@ export function buildDiagnosticArtifacts({ renderedBundles, bundleInputs, readSo
         .map(([file, html]) => [file, html.replace(BLOCK, START + '\n' + END)])) };
     for (const source of [CONTRACT, COLLECTOR, 'scripts/build-bundles.mjs', 'scripts/diagnostic-build.mjs',
         'developer/package.json', 'assets/vendor/three.min.js', 'assets/images/favicon.svg', 'assets/images/logo.svg',
+        'learn/index.html', 'learn/notebook.js', 'learn/style.css', 'js/private/store.js', 'js/private/cloudSync.js',
         'assets/generated/reading-exams/manifest.js', 'assets/generated/reading-explanations/manifest.js',
         'css/incident-center.css',
         ...requiredResources.filter((value) => value.endsWith('.css')), ...optionalResources.filter((value) => value.endsWith('.css'))]) {

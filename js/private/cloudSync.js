@@ -7,6 +7,9 @@
     let running;
     let status = '正在连接私人空间…';
     let retryDelay = 30000;
+    let pageSuspended = false;
+    let pageEpoch = 0;
+    const requests = new Set();
     function announce(message) {
         status = message;
         document.querySelectorAll('[data-atlas-status]').forEach(node => { node.textContent = message; });
@@ -14,6 +17,7 @@
     }
     async function api(path, payload) {
         const controller = new AbortController();
+        requests.add(controller);
         const timeout = setTimeout(() => controller.abort(), 15000);
         try {
             const response = await fetch(path, { credentials: 'same-origin', cache: 'no-store', signal: controller.signal,
@@ -24,10 +28,11 @@
             if (response.status === 401) throw new Error('登录已过期；本地内容已保留，请重新登录');
             if (!response.ok && !(response.status === 409 && Object.hasOwn(result, 'current'))) throw new Error(result.error || '同步失败');
             return result;
-        } finally { clearTimeout(timeout); }
+        } finally { clearTimeout(timeout); requests.delete(controller); }
     }
     function schedule(delay = 800) {
         clearTimeout(timer);
+        if (pageSuspended) return;
         timer = setTimeout(() => sync().catch(() => {}), delay);
     }
     async function mirrorPractice() {
@@ -92,11 +97,14 @@
             return { ...remote, key, dirty: false, conflict: null, localHash };
         });
     }
-    async function run() {
+    async function run(epoch) {
+        if (pageSuspended || epoch !== pageEpoch) return;
         announce('正在同步…');
         await api('/api/session');
         await mirrorPractice();
+        if (pageSuspended || epoch !== pageEpoch) return;
         for (const row of (await store.list()).filter(row => row.dirty && !row.conflict)) {
+            if (pageSuspended || epoch !== pageEpoch) return;
             const result = await api('/api/changes', { kind: row.kind, id: row.id, data: row.data, deleted: row.deleted,
                 baseVersion: row.version, operationId: row.operationId });
             await store.change(row.key, current => {
@@ -107,6 +115,7 @@
         }
         let more = true;
         while (more) {
+            if (pageSuspended || epoch !== pageEpoch) return;
             const cursor = await store.meta('cursor') || 0;
             const result = await api('/api/changes?cursor=' + cursor);
             for (const remote of result.changes) {
@@ -125,14 +134,23 @@
         schedule(pending && !conflicts ? 1000 : 30000);
     }
     async function sync() {
+        if (pageSuspended) return;
         if (running) return running;
         if (!navigator.locks) { announce('此浏览器缺少同步锁，请更新 Safari 后使用云同步'); return; }
-        running = navigator.locks.request('atlas-private-sync', run).catch(error => {
+        const epoch = pageEpoch;
+        running = navigator.locks.request('atlas-private-sync', () => run(epoch)).catch(error => {
+            // A page being put into Safari's back/forward cache intentionally
+            // aborts its network work. Keep every local operation pending and
+            // resume on pageshow instead of treating cancellation as startup failure.
+            if (pageSuspended || epoch !== pageEpoch) return;
             announce((error.name === 'AbortError' ? '连接超时' : error.message) + '；未上传内容保留在本机');
             retryDelay = Math.min(retryDelay * 2, 300000);
             schedule(retryDelay);
             throw error;
-        }).finally(() => { running = null; });
+        }).finally(() => {
+            running = null;
+            if (!pageSuspended && epoch !== pageEpoch) schedule(0);
+        });
         return running;
     }
     async function resolveConflict(key, keepLocal) {
@@ -173,6 +191,17 @@
             AppData.backups.onDataCommitted(() => schedule(1200));
         }).catch(error => announce('练习数据库不可用：' + error.message));
         global.addEventListener('online', () => schedule(0));
+        global.addEventListener('pagehide', () => {
+            pageSuspended = true;
+            pageEpoch += 1;
+            clearTimeout(timer);
+            for (const controller of requests) controller.abort();
+        });
+        global.addEventListener('pageshow', event => {
+            if (!pageSuspended && !event.persisted) return;
+            pageSuspended = false;
+            schedule(0);
+        });
         document.addEventListener('visibilitychange', () => { if (!document.hidden) schedule(0); });
         schedule(0);
     }

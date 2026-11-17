@@ -22,19 +22,59 @@ async function digest(text) {
     const bytes = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)));
     return Array.from(bytes, n => n.toString(16).padStart(2,'0')).join('');
 }
-export function configuration(env) {
+const PROVIDERS = ['deepseek','openai'];
+export function defaultProvider(env) {
+    if (PROVIDERS.includes(env.AI_PROVIDER)) return env.AI_PROVIDER;
+    if (typeof env.DEEPSEEK_API_KEY === 'string' && env.DEEPSEEK_API_KEY.trim()) return 'deepseek';
+    if (typeof env.OPENAI_API_KEY === 'string' && env.OPENAI_API_KEY.trim()) return 'openai';
+    return 'deepseek';
+}
+export function configuration(env, provider = defaultProvider(env)) {
     const limit = Number(env.AI_DAILY_LIMIT ?? 20);
+    const openai = provider === 'openai';
     let endpoint;
     try {
-        const url = new URL(env.AI_BASE_URL || 'https://api.deepseek.com');
+        // Separate credentials and endpoints: an OpenAI key must never be sent
+        // to a previously configured DeepSeek-compatible proxy (or vice versa).
+        const url = new URL(openai ? 'https://api.openai.com/v1' : env.AI_BASE_URL || 'https://api.deepseek.com');
         if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) throw new Error();
-        endpoint = url.href.replace(/\/$/, '') + '/chat/completions';
+        endpoint = url.href.replace(/\/$/, '') + (openai ? '/responses' : '/chat/completions');
     } catch (_) { /* Missing/invalid configuration disables generation only. */ }
-    const model = typeof env.AI_MODEL === 'string' ? env.AI_MODEL.trim() : 'deepseek-flash';
-    const key = typeof env.DEEPSEEK_API_KEY === 'string' ? env.DEEPSEEK_API_KEY.trim() : '';
-    return { enabled: Boolean(endpoint && /^[\w./:@-]{1,160}$/.test(model) && key && Number.isInteger(limit) && limit > 0 && limit <= 100),
-        endpoint, model, key, dailyLimit: Number.isInteger(limit) && limit >= 0 && limit <= 100 ? limit : 0,
-        jsonMode: env.AI_JSON_MODE !== 'off' };
+    const configuredModel = openai ? env.OPENAI_MODEL : env.AI_MODEL;
+    const model = typeof configuredModel === 'string' ? configuredModel.trim() : openai ? 'gpt-5.4-mini' : 'deepseek-flash';
+    const credential = openai ? env.OPENAI_API_KEY : env.DEEPSEEK_API_KEY;
+    const key = typeof credential === 'string' ? credential.trim() : '';
+    return { enabled: Boolean(PROVIDERS.includes(provider) && endpoint && /^[\w./:@-]{1,160}$/.test(model) && key && Number.isInteger(limit) && limit > 0 && limit <= 100),
+        provider, label:openai ? 'OpenAI（GPT）' : 'DeepSeek', endpoint, model, key, dailyLimit: Number.isInteger(limit) && limit >= 0 && limit <= 100 ? limit : 0,
+        jsonMode: openai || env.AI_JSON_MODE !== 'off' };
+}
+
+function providerRequest(config, text, category) {
+    const input = JSON.stringify({focus:category,text});
+    if (config.provider === 'openai') return { model:config.model, stream:false, store:false,
+        max_output_tokens:OUTPUT_TOKENS, instructions, input,
+        ...(config.model === 'gpt-5.4-mini' ? {reasoning:{effort:'none'}} : {}),
+        text:{format:{type:'json_schema',name:'ielts_analysis',strict:true,schema}} };
+    return { model:config.model, stream:false, max_tokens:OUTPUT_TOKENS,
+        ...(new URL(config.endpoint).hostname === 'api.deepseek.com' ? {thinking:{type:'disabled'},temperature:0.2} : {}),
+        messages:[{role:'system',content:instructions},{role:'user',content:input}],
+        ...(config.jsonMode ? {response_format:{type:'json_object'}} : {}) };
+}
+function providerContent(config, payload) {
+    if (config.provider === 'openai') {
+        const messages = Array.isArray(payload?.output) ? payload.output.filter(item=>item?.type==='message' && item.role==='assistant') : [];
+        const parts = messages.flatMap(item=>Array.isArray(item.content)?item.content:[]);
+        if (parts.some(part=>part?.type==='refusal')) throw error(422,'REFUSAL','模型未能解析这段内容，可换一个例句或手动记录');
+        if (payload?.status === 'incomplete') throw error(502,'INCOMPLETE','模型输出未完成，请缩短原文后重试');
+        if (payload?.status !== 'completed' || payload.error || messages.some(item=>item.status && item.status !== 'completed')) throw error(502,'INVALID_RESULT','模型未返回完整解析，请重试');
+        // Raw REST responses have output[].content[]; output_text is only an
+        // SDK convenience property. Never parse reasoning or tool-call items.
+        return parts.filter(part=>part?.type==='output_text' && typeof part.text==='string').map(part=>part.text).join('');
+    }
+    const choice = payload?.choices?.[0];
+    if (choice?.finish_reason === 'length') throw error(502,'INCOMPLETE','模型输出被截断，请缩短原文后重试');
+    if (choice?.message?.refusal) throw error(422,'REFUSAL','模型未能解析这段内容，可换一个例句或手动记录');
+    return choice?.message?.content;
 }
 export function validateResult(value) {
     const string = (v, max=1200) => typeof v === 'string' && v.length <= max;
@@ -94,7 +134,9 @@ async function providerJson(response) {
 export function createAnalysisService({ fetchImpl = (...args)=>fetch(...args), now = ()=>Date.now() } = {}) {
     async function settings(env) {
         const config = configuration(env);
-        return { enabled:config.enabled, maxInput:MAX_INPUT, usage:await usage(env.DB,config,now()) };
+        return { enabled:config.enabled, defaultProvider:config.provider,
+            providers:PROVIDERS.map(id=>{const entry=configuration(env,id);return {id,label:entry.label,model:entry.model,enabled:entry.enabled};}),
+            maxInput:MAX_INPUT, usage:await usage(env.DB,config,now()) };
     }
     async function status(env,id) {
         if (typeof id !== 'string' || !/^[\w-]{16,80}$/.test(id)) throw error(400,'INVALID_REQUEST','解析编号无效');
@@ -103,8 +145,9 @@ export function createAnalysisService({ fetchImpl = (...args)=>fetch(...args), n
         return { ...project(row), usage:await usage(env.DB,configuration(env),now()) };
     }
     async function analyze(env,input) {
-        const config = configuration(env);
-        if (!config.enabled) throw error(503,'AI_NOT_CONFIGURED','自动解析尚未配置，请先完成模型服务设置');
+        if (input.provider !== undefined && !PROVIDERS.includes(input.provider)) throw error(400,'INVALID_PROVIDER','请选择支持的解析服务');
+        const config = configuration(env,input.provider);
+        if (!config.enabled) throw error(503,'AI_NOT_CONFIGURED',config.label+' 尚未配置或已关闭，请先完成模型服务设置');
         if (typeof input.text !== 'string' || !input.text.trim() || input.text.trim().length > MAX_INPUT || !['vocabulary','grammar'].includes(input.category)
             || typeof input.requestId !== 'string' || !/^[\w-]{16,80}$/.test(input.requestId)) throw error(400,'INVALID_INPUT',`请提供单词或句子，最长 ${MAX_INPUT} 字符`);
         const text = input.text.trim();
@@ -145,23 +188,18 @@ export function createAnalysisService({ fetchImpl = (...args)=>fetch(...args), n
         try {
             const response = await fetchImpl(config.endpoint, { method:'POST', redirect:'error', signal:controller.signal,
                 headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+config.key },
-                body:JSON.stringify({ model:config.model, stream:false, max_tokens:OUTPUT_TOKENS,
-                    ...(new URL(config.endpoint).hostname === 'api.deepseek.com' ? {thinking:{type:'disabled'},temperature:0.2} : {}),
-                    messages:[{role:'system',content:instructions},{role:'user',content:JSON.stringify({focus:input.category,text})}],
-                    ...(config.jsonMode ? {response_format:{type:'json_object'}} : {}) }) });
+                body:JSON.stringify(providerRequest(config,text,input.category)) });
             if (!response.ok) {
                 const status = response.status;
                 throw error(status===429?429:502,status===401||status===403?'PROVIDER_AUTH':status===429?'PROVIDER_LIMIT':'PROVIDER_ERROR',
                     status===401||status===403?'模型服务授权失败，请检查服务器 API Key':status===429?'模型服务额度或频率受限，请稍后再试':'模型服务暂时不可用，请稍后重试');
             }
             const payload = await providerJson(response);
-            const choice = payload.choices?.[0];
-            if (choice?.finish_reason === 'length') throw error(502,'INCOMPLETE','模型输出被截断，请缩短原文后重试');
-            if (choice?.message?.refusal) throw error(422,'REFUSAL','模型未能解析这段内容，可换一个例句或手动记录');
             let parsed;
-            try { parsed = JSON.parse(choice?.message?.content); } catch (_) { throw error(502,'INVALID_RESULT','模型未返回有效解析，请重试'); }
+            const content = providerContent(config,payload);
+            try { parsed = JSON.parse(content); } catch (_) { throw error(502,'INVALID_RESULT','模型未返回有效解析，请重试'); }
             const details = validateResult(parsed);
-            const result = { analysis:formatAnalysis(details), details, metadata:{model:config.model,promptVersion:PROMPT_VERSION,generatedAt:new Date(now()).toISOString()} };
+            const result = { analysis:formatAnalysis(details), details, metadata:{provider:config.provider,model:config.model,promptVersion:PROMPT_VERSION,generatedAt:new Date(now()).toISOString()} };
             await env.DB.prepare("UPDATE analysis_requests SET status='complete',result_json=?,finished_ms=? WHERE request_id=? AND status='pending'").bind(JSON.stringify(result),now(),input.requestId).run();
             return { status:'complete',requestId:input.requestId,...result,cached:false,usage:await usage(env.DB,config,now()) };
         } catch (cause) {

@@ -2,14 +2,14 @@
 
 基础提交：`3510cc61e2a55017bcdab2b42f11bdd6ba1108d4`（main）。
 
-本目录增加 Cloudflare Workers + D1 部署路径。沿用原有阅读网页和 AppData，笔记与练习不依赖 Mac mini、墨墨 API 或模型 API；自动解析可选接入 DeepSeek。Cloudflare 免费额度内不产生服务器费用；模型 API 单独计费，不包含在 ChatGPT Plus 中。请保持免费计划并检查平台用量。
+本目录增加 Cloudflare Workers + D1 部署路径。沿用原有阅读网页和 AppData，笔记与练习不依赖 Mac mini、墨墨 API 或模型 API；自动解析可选接入 DeepSeek、OpenAI。Cloudflare 免费额度内不产生服务器费用；模型 API 单独计量，不包含在 ChatGPT Plus 中。符合条件的 Pro 用户可在官方平台激活 API 额度权益，见下文。请保持免费计划并检查平台用量。
 
 ## 已实现的使用路径
 
 - `/learn/login.html`：单用户私人访问码登录；没有公开注册。
 - `/learn/index.html`：词汇/语法笔记、今日收集、待复习、已掌握、搜索。
 - 保存原句、来源和解析。复用本地词典；也可复制提示词到 ChatGPT 后手工粘贴结果。
-- 可选 DeepSeek 自动解析：中文词义、句子成分、语法结构、搭配和两个原创 IELTS 场景例句。先预览，明确追加或替换解析框，编辑后保存。
+- 可选 DeepSeek / OpenAI 自动解析：中文词义、句子成分、语法结构、搭配和两个原创 IELTS 场景例句。先预览，明确追加或替换解析框，编辑后保存。
 - 阅读网页顶部增加笔记入口和同步状态。
 - 已提交练习（含记录中的答案和注释）、独立学习笔记跨设备同步。
 - 笔记本机先保存，网络重试；显式处理版本冲突和删除墓碑。
@@ -116,11 +116,27 @@ npm run deploy
 | 名称 | 默认值 | 用途 |
 | --- | --- | --- |
 | `AI_DAILY_LIMIT` | `20` | 每天新请求上限，整数 0–100；`0` 关闭解析 |
-| `AI_MODEL` | `deepseek-flash` | 账号支持的模型 ID |
-| `AI_BASE_URL` | `https://api.deepseek.com` | 兼容 Chat Completions 的 HTTPS 基础地址；不要填完整 `/chat/completions` 路径 |
-| `AI_JSON_MODE` | 开启 | 仅兼容服务不支持 JSON 模式时设 `off` |
+| `AI_MODEL` | `deepseek-flash` | DeepSeek 或其兼容服务的模型 ID |
+| `AI_BASE_URL` | `https://api.deepseek.com` | 仅 DeepSeek 路径使用的兼容 Chat Completions HTTPS 基础地址；不要填完整 `/chat/completions` 路径 |
+| `AI_JSON_MODE` | 开启 | 仅 DeepSeek 兼容服务不支持 JSON 模式时设 `off`，不影响 OpenAI |
+| `AI_PROVIDER` | 自动选择 | `deepseek` 或 `openai`，指定网页默认选项；未设置时有 DeepSeek 密钥优先 DeepSeek，否则有 OpenAI 密钥选择 OpenAI |
+| `OPENAI_MODEL` | `gpt-5.4-mini` | 支持 Responses 和严格结构化输出的 OpenAI 模型 ID |
 
 未配置密钥或模型失败时，保留原文及已有解析，手动笔记与同步继续可用。模型结果按纯文本展示，不能执行返回的 HTML。模型可能误解语法或词义，请核对后保存。自动解析目前只在网页主动触发；iOS 快捷指令仍只收集原文。
+
+### 增加 OpenAI（GPT）接口
+
+保留原来的 `DEEPSEEK_API_KEY` 即可，两家密钥独立。以后使用 OpenAI 时：
+
+1. 在 OpenAI API Platform 获取项目 API Key，确认该 API 组织有余额或已激活的额度权益。
+2. 在同一 Worker 的 **Runtime variables and secrets → Production** 添加 Secret：名称 `OPENAI_API_KEY`，值为原始 API Key，保存并部署。不要使用 ChatGPT Cookie、登录会话或订阅凭证。
+3. 刷新笔记页，在“解析服务”选择 **OpenAI（GPT）**。可选设置文本变量 `AI_PROVIDER=openai` 作为默认；不设置也可每次在网页选择。
+
+OpenAI 使用固定官方地址 `https://api.openai.com/v1/responses`，默认 `gpt-5.4-mini`，关闭默认模型的推理，使用严格 JSON Schema 并执行相同的后端校验。设置 `store:false`，不创建可继续的对话或使用工具；这不代表供应商完全不保留安全审计数据。`AI_BASE_URL` 和 `AI_MODEL` 只影响原来的 DeepSeek 路径，OpenAI 密钥不会被发送到该自定义地址。见 [Responses API](https://developers.openai.com/api/reference/resources/responses/methods/create)、[结构化输出](https://developers.openai.com/api/docs/guides/structured-outputs) 与 [默认模型](https://developers.openai.com/api/docs/models/gpt-5.4-mini)。
+
+**ChatGPT Pro 与 API 仍是独立系统。** 根据 [官方 API 额度权益说明](https://help.openai.com/en/articles/20001626-api-credits-benefit-for-eligible-chatgpt-subscriptions)，符合条件的 Pro 用户可以领取 API credits；需要满足资格、关联 API 组织并主动激活，订阅本身不证明额度已到账。以后开通 Pro 时，在官方 Billing 检查资格和实际余额，再配置此接口。权益、有效期与可用模型以官方账号显示为准，网站不能直接消耗 ChatGPT 网页消息额度。
+
+两个服务**共用**每天 20 次新请求的上限，缓存按服务地址和模型区分。切换服务会撤销旧预览，迟到结果不会填入新选择；任何一方失败都不会自动切换另一方或产生第二次调用。尚未配置的选项仍可看到，但自动解析按钮不可用；已有笔记与手动功能继续可用。
 
 ## iOS 快捷指令
 
@@ -158,5 +174,5 @@ python developer/tests/e2e/suite_practice_flow.py
 - iPhone Safari 实机阅读、弹窗/后台切换、词典和音频验收；再决定同标签页练习改造。
 - 旧词表、精读词汇、复习计划同步；明确各自写入和冲突模型。
 - 按官方授权和实际字段设计墨墨增量同步，保持执行器与手机功能解耦。
-- 使用真实 DeepSeek API 做一次授权后的解析验收，并在 iPhone Safari 验证后台切换和错误恢复。
+- 配置真实 DeepSeek / OpenAI API 后分别验收，并在 iPhone Safari 验证后台切换和错误恢复。
 - Obsidian 按笔记独立文件导出，以及大规模历史的压缩/清理策略。

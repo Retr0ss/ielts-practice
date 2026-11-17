@@ -8,6 +8,88 @@ const explanation = {kind:'sentence',meaning:'政策很重要。',structure:'Pol
 const input = (requestId='analysis-request-0001',text='Policies matter.') => ({requestId,text,category:'grammar'});
 const envFor = DB => ({DB,DEEPSEEK_API_KEY:'test-only-deepseek-key',AI_DAILY_LIMIT:'2'});
 const success = () => Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(explanation)}}]});
+const openaiSuccess = () => Response.json({status:'completed',output:[
+    {type:'reasoning',summary:[]},
+    {type:'message',role:'assistant',status:'completed',content:[{type:'output_text',text:JSON.stringify(explanation)}]}
+]});
+
+test('OpenAI Responses uses its own key, endpoint, model and strict schema without provider state',async()=>{
+    const DB=createDatabase();let calls=0;
+    const env={...envFor(DB),OPENAI_API_KEY:'test-only-openai-key',AI_MODEL:'other-deepseek-model',AI_BASE_URL:'https://deepseek-proxy.test/v1',AI_JSON_MODE:'off'};
+    const service=createAnalysisService({fetchImpl:async(url,options)=>{
+        calls++;assert.equal(url,'https://api.openai.com/v1/responses');
+        assert.equal(options.headers.Authorization,'Bearer '+env.OPENAI_API_KEY);
+        assert.equal(options.redirect,'error');
+        const body=JSON.parse(options.body);
+        assert.equal(body.model,'gpt-5.4-mini');assert.equal(body.store,false);assert.equal(body.stream,false);
+        assert.equal(body.max_output_tokens,2500);assert.equal(body.reasoning.effort,'none');
+        assert.equal(body.max_tokens,undefined);assert.equal(body.thinking,undefined);assert.equal(body.tools,undefined);
+        assert.equal(body.text.format.type,'json_schema');assert.equal(body.text.format.strict,true);
+        assert.equal(body.text.format.schema.additionalProperties,false);
+        assert.ok(body.text.format.schema.required.includes('examples'));
+        assert.equal(JSON.parse(body.input).text,'Policies matter.');
+        assert.ok(!options.body.includes(env.OPENAI_API_KEY)&&!options.body.includes(env.DEEPSEEK_API_KEY));
+        return openaiSuccess();
+    }});
+    try{
+        const result=await service.analyze(env,{...input(),provider:'openai',model:'browser-cannot-override',apiKey:'ignored',baseUrl:'https://evil.test'});
+        assert.equal(result.status,'complete');assert.equal(result.metadata.provider,'openai');assert.match(result.analysis,/句子成分/);
+        const settings=await service.settings(env);assert.equal(settings.defaultProvider,'deepseek');
+        assert.equal(settings.providers.length,2);assert.ok(settings.providers.every(p=>p.enabled));
+        assert.ok(!JSON.stringify(settings).includes('test-only-'));assert.ok(!JSON.stringify(settings).includes('proxy.test'));
+        await service.analyze(env,{...input('openai-cached-request'),provider:'openai'});assert.equal(calls,1);
+    }finally{DB.close();}
+});
+
+test('providers isolate cached results and share a single daily allowance',async()=>{
+    const DB=createDatabase();let calls=0;
+    const env={...envFor(DB),OPENAI_API_KEY:'test-only-openai-key'};
+    const service=createAnalysisService({fetchImpl:async url=>{calls++;return url.endsWith('/responses')?openaiSuccess():success();}});
+    try{
+        const deep=await service.analyze(env,input());
+        const open=await service.analyze(env,{...input('openai-analysis-0001'),provider:'openai'});
+        assert.equal(deep.cached,false);assert.equal(open.cached,false);assert.equal(calls,2);assert.equal(open.usage.remaining,0);
+        assert.equal((await service.analyze(env,{...input('openai-analysis-cache'),provider:'openai'})).cached,true);
+        assert.equal((await service.analyze(env,input('deepseek-analysis-cache'))).cached,true);
+        await assert.rejects(service.analyze(env,{...input('new-openai-analysis','Other text'),provider:'openai'}),{code:'DAILY_LIMIT'});
+        await assert.rejects(service.analyze(env,{...input(),provider:'openai'}),{code:'REQUEST_REUSED'});
+        assert.equal(calls,2);
+    }finally{DB.close();}
+});
+
+test('OpenAI failures, refusals and partial output never trigger another provider',async()=>{
+    const message={type:'message',role:'assistant',status:'completed',content:[{type:'output_text',text:JSON.stringify(explanation)}]};
+    for(const payload of [
+        {status:'incomplete',output:[message],incomplete_details:{reason:'max_output_tokens'}},
+        {status:'completed',output:[{...message,content:[{type:'refusal',refusal:'declined'}]}]},
+        {status:'failed',error:{message:'internal upstream detail'},output:[message]},
+        {status:'completed',output:[{...message,status:'in_progress'}]},
+        {status:'completed',output:[],output_text:JSON.stringify(explanation)},
+        {status:'completed',output:[{...message,content:[{type:'output_text',text:'not JSON'}]}]}
+    ]){
+        const DB=createDatabase();let calls=0;
+        const env={...envFor(DB),OPENAI_API_KEY:'test-only-openai-key'};
+        const service=createAnalysisService({fetchImpl:async url=>{calls++;assert.ok(url.endsWith('/responses'));return Response.json(payload);}});
+        try{
+            await assert.rejects(service.analyze(env,{...input(),provider:'openai'}),error=>[422,502].includes(error.status)&&!error.message.includes('internal upstream'));
+            assert.equal(calls,1);assert.equal((await service.status(env,'analysis-request-0001')).status,'failed');
+        }finally{DB.close();}
+    }
+});
+
+test('missing OpenAI credentials or unknown provider cannot use the DeepSeek key',async()=>{
+    const DB=createDatabase();let calls=0;
+    const service=createAnalysisService({fetchImpl:async()=>{calls++;return openaiSuccess();}});
+    try{
+        await assert.rejects(service.analyze(envFor(DB),{...input(),provider:'openai'}),{code:'AI_NOT_CONFIGURED'});
+        await assert.rejects(service.analyze(envFor(DB),{...input(),provider:'untrusted'}),{code:'INVALID_PROVIDER'});
+        assert.equal(calls,0);
+        const env={DB,OPENAI_API_KEY:'test-only-openai-key',OPENAI_MODEL:'gpt-custom-model'};
+        const config=await service.settings(env);assert.equal(config.defaultProvider,'openai');assert.equal(config.enabled,true);
+        const result=await service.analyze(env,input());assert.equal(result.metadata.provider,'openai');assert.equal(result.metadata.model,'gpt-custom-model');
+        assert.equal(calls,1);
+    }finally{DB.close();}
+});
 
 test('DeepSeek request is server-only, bounded, non-thinking and cached across retries/devices', async () => {
     const DB=createDatabase();let calls=0;

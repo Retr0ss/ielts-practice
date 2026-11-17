@@ -59,3 +59,15 @@
 | 静态总检查 | 仍仅前述 v2 架构守卫失败；没有放宽守卫，新增解析代码不在违规清单中 |
 
 模型调用全部使用模拟响应，没有真实付费 API 请求。需由用户在 Cloudflare **Runtime variables and secrets / Production** 配置密钥，再做真实 DeepSeek 解析与 iPhone Safari 验收。没有将 Chromium 结果当作 Safari 通过，也没有保证模型答案正确。
+
+## 2026-11-17：增加 OpenAI（GPT）接口
+
+新增官方 Responses API 适配，默认 `gpt-5.4-mini`、`reasoning.effort=none`、`store:false`、严格 JSON Schema；密钥来自独立的 `OPENAI_API_KEY`，不复用 DeepSeek 密钥、自定义地址或模型。保持现有 DeepSeek 请求格式、缓存键和数据表；两家共用原有每日请求上限。网页增加服务选择，选择未配置的服务时保留手动功能；切换服务会撤销旧预览和请求重试编号，不自动改用另一家。
+
+- `analysis.test.mjs` 13/13、`worker.test.mjs` 5/5 通过。新增覆盖 OpenAI 原始 REST 输出提取、严格 schema/不保存对话参数、服务密钥/地址隔离、缓存区分与共享限额、拒绝/不完整/错误输出、缺少 OpenAI 密钥不借用 DeepSeek 凭证。所有模型响应均模拟，没有真实付费 API 调用。
+- 手机尺寸 Chromium 的 `analysis_flow.py` 通过，增加同一原文切换服务时丢弃迟到结果、OpenAI 请求选择、预览替换/保存、表单重置保留所选服务、无密钥时按钮禁用检查。`navigation_flow.py` 和完整 `browser_flow.py` 再次通过。
+- 18 个 bundle 一致，诊断构建/启动/契约测试通过；Cloudflare 静态打包和 Worker dry-run 通过。静态总检查仍仅有此前同一架构守卫失败（source 8、tests 33，无新增文件违规），没有更改守卫。
+- 静态检查后依次运行 `full_reset_flow.py`、`suite_practice_flow.py`，均通过；套题日志仍有已知可选资源 file-not-found，断言通过。
+- 最新官方说明允许符合条件的 Pro 用户激活 API credits，但需关联 API 组织并完成领取；网站仍使用项目 API Key。不是将 ChatGPT 网页会话或消息配额当作 API 凭证。
+
+尚待用户配置真实 OpenAI API Key、确认 API 组织余额或额度权益后验收；未完成真实 iPhone Safari 与真实模型调用验证。本轮没有更改数据库结构或笔记格式。

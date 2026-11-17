@@ -4,12 +4,13 @@ from playwright.sync_api import sync_playwright
 
 URL='https://127.0.0.1:8791'
 result={'status':'complete','requestId':'mock-analysis-request','analysis':'词义 / 句意\n政策很重要。\n\nIELTS 场景原创例句\nPublic policy affects education.\n公共政策影响教育。\n<img src=x onerror="window.__analysisInjected=true">','metadata':{'model':'deepseek-flash','promptVersion':'ielts-grammar-v1','generatedAt':'2026-11-17T12:00:00Z'},'cached':False,'usage':{'remaining':19,'dailyLimit':20}}
+config={'enabled':True,'defaultProvider':'deepseek','providers':[{'id':'deepseek','label':'DeepSeek','model':'deepseek-flash','enabled':True},{'id':'openai','label':'OpenAI（GPT）','model':'gpt-5.4-mini','enabled':True}],'maxInput':4000,'usage':{'remaining':20,'dailyLimit':20}}
 with sync_playwright() as p:
     browser=p.chromium.launch(headless=True)
     context=browser.new_context(ignore_https_errors=True,viewport={'width':393,'height':852})
     try:
         page=context.new_page()
-        page.route('**/api/analysis/config',lambda route:route.fulfill(json={'enabled':True,'maxInput':4000,'usage':{'remaining':20,'dailyLimit':20}}))
+        page.route('**/api/analysis/config',lambda route:route.fulfill(json=config))
         page.route('**/api/analysis',lambda route:route.fulfill(json=result))
         page.goto(URL+'/learn/login.html')
         page.locator('#access-code').fill('local-test-access-code-not-for-production')
@@ -40,10 +41,36 @@ with sync_playwright() as p:
         with page.expect_request('**/api/analysis'):
             page.locator('#analyze').click()
         page.locator('#note-text').fill('New sentence.')
+        page.locator('#analysis-provider').select_option('openai')
         pending.pop().fulfill(json=result)
         page.wait_for_function('!document.querySelector("#analyze").disabled')
         assert page.locator('#analysis-preview').is_hidden()
         assert page.locator('#note-analysis').input_value()==''
+
+        # Explicit provider selection reaches the backend; a provider switch
+        # fences a late result even if the source text stays identical.
+        with page.expect_request('**/api/analysis') as request:
+            page.locator('#analyze').click()
+        assert request.value.post_data_json['provider']=='openai'
+        page.locator('#analysis-provider').select_option('deepseek')
+        pending.pop().fulfill(json={**result,'metadata':{**result['metadata'],'provider':'openai','model':'gpt-5.4-mini'}})
+        page.wait_for_function('!document.querySelector("#analyze").disabled')
+        assert page.locator('#analysis-preview').is_hidden()
+
+        page.unroute('**/api/analysis')
+        page.route('**/api/analysis',lambda route:route.fulfill(json={**result,'metadata':{**result['metadata'],'provider':'openai','model':'gpt-5.4-mini'}}))
+        page.locator('#analysis-provider').select_option('openai')
+        page.locator('#note-analysis').fill('My own OpenAI note')
+        page.locator('#analyze').click()
+        page.locator('#analysis-preview').wait_for(state='visible')
+        assert 'OpenAI' in page.locator('#analysis-meta').inner_text()
+        assert page.locator('#note-analysis').input_value()=='My own OpenAI note'
+        page.locator('#analysis-replace').click()
+        assert page.locator('#note-analysis').input_value()==result['analysis']
+        page.locator('button[type=submit]').click()
+        page.wait_for_function('document.querySelector("#note-text").value === ""')
+        assert page.locator('#analysis-provider').input_value()=='openai'
+        page.locator('#note-text').fill('New sentence.')
 
         page.unroute('**/api/analysis')
         page.route('**/api/analysis',lambda route:route.fulfill(status=429,json={'error':'今日自动解析次数已用完','code':'DAILY_LIMIT'}))
@@ -57,11 +84,13 @@ with sync_playwright() as p:
 
         # No key/configured service: manual notes remain usable.
         page.unroute('**/api/analysis/config')
-        page.route('**/api/analysis/config',lambda route:route.fulfill(json={'enabled':False,'maxInput':4000,'usage':{'remaining':20,'dailyLimit':20}}))
+        page.route('**/api/analysis/config',lambda route:route.fulfill(json={**config,'enabled':False,'providers':[{**entry,'enabled':False} for entry in config['providers']]}))
         page.reload()
         page.wait_for_function('document.querySelector("#analysis-status").textContent.includes("尚未配置")')
         assert page.locator('#analyze').is_disabled()
+        page.locator('#analysis-provider').select_option('openai')
+        assert page.locator('#analyze').is_disabled()
         assert page.locator('button[type=submit]').is_enabled()
-        print(json.dumps({'status':'pass','checks':['preview preserves notes','explicit append/save/sync','late response discarded','quota failure preserves original','HTML treated as text','mobile layout','manual fallback without key'],'model_calls':'mocked only'}))
+        print(json.dumps({'status':'pass','checks':['preview preserves notes','explicit append/save/sync','late response discarded','provider switch fences results','OpenAI selection/replace/save','quota failure preserves original','HTML treated as text','mobile layout','manual fallback without keys'],'model_calls':'mocked only'}))
     finally:
         context.close();browser.close()

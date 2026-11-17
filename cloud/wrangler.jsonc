@@ -4,6 +4,9 @@
   "account_id": "44a579cc0bf6251392e6555f53e73007",
   "main": "worker.mjs",
   "compatibility_date": "2026-11-01",
+  "vars": {
+    "AI_DAILY_LIMIT": "100"
+  },
   "assets": {
     "directory": "../dist/private",
     "binding": "ASSETS",

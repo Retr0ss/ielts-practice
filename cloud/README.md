@@ -2,13 +2,14 @@
 
 基础提交：`3510cc61e2a55017bcdab2b42f11bdd6ba1108d4`（main）。
 
-本目录增加 Cloudflare Workers + D1 部署路径。沿用原有阅读网页和 AppData，不依赖 Mac mini、墨墨 API 或模型 API。免费额度内不产生服务器费用；不是无限使用或费用保证。请保持免费计划并检查 Cloudflare 用量，未配置账号前不能发布。
+本目录增加 Cloudflare Workers + D1 部署路径。沿用原有阅读网页和 AppData，笔记与练习不依赖 Mac mini、墨墨 API 或模型 API；自动解析可选接入 DeepSeek。Cloudflare 免费额度内不产生服务器费用；模型 API 单独计费，不包含在 ChatGPT Plus 中。请保持免费计划并检查平台用量。
 
 ## 已实现的使用路径
 
 - `/learn/login.html`：单用户私人访问码登录；没有公开注册。
 - `/learn/index.html`：词汇/语法笔记、今日收集、待复习、已掌握、搜索。
-- 保存原句、来源和手动解析。复用本地词典；复制提示词到 ChatGPT 后可以手工粘贴结果，没有付费模型调用。
+- 保存原句、来源和解析。复用本地词典；也可复制提示词到 ChatGPT 后手工粘贴结果。
+- 可选 DeepSeek 自动解析：中文词义、句子成分、语法结构、搭配和两个原创 IELTS 场景例句。先预览，明确追加或替换解析框，编辑后保存。
 - 阅读网页顶部增加笔记入口和同步状态。
 - 已提交练习（含记录中的答案和注释）、独立学习笔记跨设备同步。
 - 笔记本机先保存，网络重试；显式处理版本冲突和删除墓碑。
@@ -32,7 +33,7 @@
 
 退出登录会撤销云端会话，本机学习缓存保留。公用设备退出后还需清除站点数据。删除为逻辑删除，云端变更历史仍保存旧版本；彻底清理历史需另行设计，不能只删除墓碑，否则旧设备可能重新上传旧内容。定期导出备份，Cloudflare 平台恢复能力不能代替外部备份。
 
-## 配置与发布（尚未执行）
+## 配置与发布
 
 需要：Cloudflare 账号的 Worker/D1 权限；保留免费计划；可选自己的域名。可以先使用平台网址。项目代码/构建产物和学习内容继续受 GPL-3.0 及第三方内容授权范围约束。
 
@@ -55,7 +56,7 @@
 
 1. 点“生成访问码与摘要”。浏览器使用 Web Crypto 生成随机码及 SHA-256 摘要，不发送网络请求或保存到浏览器存储。
 2. 把“私人访问码”保存到自己的密码管理器，不要截图或发到聊天。
-3. 复制“Cloudflare 配置摘要”。打开这个 Worker → Settings → Variables and Secrets → Add。
+3. 复制“Cloudflare 配置摘要”。打开这个 Worker → Settings → Runtime variables and secrets → Production → Add variable。不要添加到 Build 的变量区。
 4. 类型选择 Secret；名称 `OWNER_ACCESS_HASH`；值粘贴摘要。选择保存并部署。
 5. 回到 `/learn/login.html`，使用原始访问码登录。
 
@@ -93,7 +94,33 @@ npm run deploy
 
 首次部署后验证：匿名直接访问题库返回 401；登录后可阅读；两台设备能同步一条笔记和一条练习；退出后无法读取 API。不要创建不受保护的 Pages 镜像或公开音频目录。
 
-如后续接入持续集成，平台 Token 仅配置必要 Worker/D1 权限并放入加密 Secrets。当前未添加 GitHub Actions 自动部署 workflow；是否连接 Workers Builds 以用户的 Cloudflare 控制台为准。尚未通过本次开发创建或发布在线站点。
+平台 Token 仅配置必要 Worker/D1 权限并放入加密 Secrets。当前未添加 GitHub Actions 自动部署 workflow；用户已在 Cloudflare 连接 Workers Builds，生产分支为 `feature/private-learning-mvp`。
+
+## DeepSeek 自动解析
+
+在已有私人站点上启用时，无需更改登录码或重新创建数据库。部署命令会应用 `0002_analysis.sql`，增加独立的解析请求表，不修改已有笔记和练习记录。
+
+1. 在 DeepSeek 开放平台创建 API Key，并确认有可用 API 余额。ChatGPT Plus 不提供这部分额度。
+2. Cloudflare Worker → Settings → **Runtime variables and secrets** → **Production** → **Add variable**。
+3. Key 填 `DEEPSEEK_API_KEY`，Value 填原始 API Key，勾选 **Secret**，点 **Add variable and deploy**。这里不计算 SHA-256，也不修改 `OWNER_ACCESS_HASH`。不要把密钥发送到聊天或提交 GitHub。
+4. 刷新 `/learn/index.html`，粘贴单词或句子，点“自动解析”。核对预览后追加或替换解析框，再保存笔记。保存后沿用现有跨设备同步、JSON 备份和 Obsidian 导出。
+
+默认使用官方 `https://api.deepseek.com/chat/completions`，模型 `deepseek-flash`，关闭思考模式，使用 JSON 输出并在服务器验证结构。参见 [官方调用示例](https://api-docs.deepseek.com/api_samples/chat_curl/)、[Chat API](https://api-docs.deepseek.com/api/create-chat-completion/) 和 [JSON 模式](https://api-docs.deepseek.com/guides/json_mode/)。模型可用性与价格以官方账号为准；当前测试没有使用真实密钥或产生付费调用。
+
+只有已登录的私人会话能调用解析；快捷指令收集凭证不能调用付费接口。密钥只在 Worker 读取，不进入浏览器、备份或 API 响应。模型仅收到当前输入与类型，不会自动上传整本笔记、练习记录或来源字段。请只发送有权使用的内容。
+
+默认全站每天最多 **20 次**新解析，UTC 零点恢复；失败尝试也计入。最多输入 4000 字符，输出最多 2500 token，40 秒超时。没有自动重试模型请求：网络超时后重试会优先查询同一请求；同一内容、类型、模型与提示词版本复用最近 7 天结果，并发请求共用结果。缓存命中不额外调用模型；7 天清理在新解析请求时执行，并非定时删除保证。缓存保存校验后的解析内容、输入摘要和状态，不单独保存原始输入。
+
+限额按 D1 原子预留跨设备生效；它限制请求数，不是金额上限。可在同一 **Runtime** 区域设置以下可选变量（普通文本即可）：
+
+| 名称 | 默认值 | 用途 |
+| --- | --- | --- |
+| `AI_DAILY_LIMIT` | `20` | 每天新请求上限，整数 0–100；`0` 关闭解析 |
+| `AI_MODEL` | `deepseek-flash` | 账号支持的模型 ID |
+| `AI_BASE_URL` | `https://api.deepseek.com` | 兼容 Chat Completions 的 HTTPS 基础地址；不要填完整 `/chat/completions` 路径 |
+| `AI_JSON_MODE` | 开启 | 仅兼容服务不支持 JSON 模式时设 `off` |
+
+未配置密钥或模型失败时，保留原文及已有解析，手动笔记与同步继续可用。模型结果按纯文本展示，不能执行返回的 HTML。模型可能误解语法或词义，请核对后保存。自动解析目前只在网页主动触发；iOS 快捷指令仍只收集原文。
 
 ## iOS 快捷指令
 
@@ -114,6 +141,7 @@ npm run deploy
 
 ```bash
 node developer/tests/private/worker.test.mjs
+node developer/tests/private/analysis.test.mjs
 node developer/tests/js/appDataV2.test.js
 node scripts/build-bundles.mjs --check
 python developer/tests/ci/run_static_suite.py
@@ -130,5 +158,5 @@ python developer/tests/e2e/suite_practice_flow.py
 - iPhone Safari 实机阅读、弹窗/后台切换、词典和音频验收；再决定同标签页练习改造。
 - 旧词表、精读词汇、复习计划同步；明确各自写入和冲突模型。
 - 按官方授权和实际字段设计墨墨增量同步，保持执行器与手机功能解耦。
-- 可选模型解析、限额与结构校验；不将 ChatGPT Plus 当作 API 额度。
+- 使用真实 DeepSeek API 做一次授权后的解析验收，并在 iPhone Safari 验证后台切换和错误恢复。
 - Obsidian 按笔记独立文件导出，以及大规模历史的压缩/清理策略。

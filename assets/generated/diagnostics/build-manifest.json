@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "appVersion": "0.6.3.2",
-  "buildId": "sha256:aa2d0f831a7fc21642fe0fac33693bd1f0d45d4b9dec892781089c5852a11e9f",
+  "buildId": "sha256:b665bacfc34e5bd6ae52167d533a6d88794800944baf937e84c6c630ce36d1cd",
   "mappingPath": "assets/generated/diagnostics/build-manifest.json",
   "readingResources": [
     "assets/generated/reading-exams/p1-high-01.js",
@@ -550,7 +550,7 @@
     },
     {
       "path": "js/bundles/core-foundation.bundle.js",
-      "sha256": "56b18190099febd7e486d8bd118bf3dbe56e413d6b577366571a49776a66e868"
+      "sha256": "69469d497a778060d3612b2aa9af0f1d5b4e2cd1872816fde5fc6aca733e7b18"
     },
     {
       "path": "js/bundles/diagnostics.bundle.js",
@@ -566,11 +566,11 @@
     },
     {
       "path": "js/bundles/listening-record-bridge.bundle.js",
-      "sha256": "eccbb8567005cdd42611a789867f4f06956149d4d1f924f1d798119201a2c21c"
+      "sha256": "393d8aedf7a3e51cfed31d8d367b54b3153e54de1fedf809ee15d1818c874b69"
     },
     {
       "path": "js/bundles/listening-wrapper.bundle.js",
-      "sha256": "2fec33f90ea50eccd6b43199d8a7e4e11b1b6d4c8ca8aeb8dec67f21795834ca"
+      "sha256": "f201c6fd9249922abef6b61755c2f304ad341d9cec5a62d2a4d2bf4080c30988"
     },
     {
       "path": "js/bundles/more.bundle.js",
@@ -578,7 +578,7 @@
     },
     {
       "path": "js/bundles/practice-page-enhancer.bundle.js",
-      "sha256": "3f92d6df8cf1b4378e40895b48455b54e2749c9e6c63787ca8e3c549cc81383a"
+      "sha256": "b1c248196479c65768a66fbe44e413f1e39eb7cb24ff68a5e81d226eefdd193f"
     },
     {
       "path": "js/bundles/practice.bundle.js",
@@ -590,7 +590,7 @@
     },
     {
       "path": "js/bundles/reading-page.bundle.js",
-      "sha256": "99f2b8342839e3fce2994607cddd00e58b1813adad1b2d66254c15945754d859"
+      "sha256": "f8d5ab510bd34b5b12861f3204fed12a029442939cfb2f1f39cd0ddb1c067ca3"
     },
     {
       "path": "js/bundles/reading-tools.bundle.js",
@@ -622,27 +622,31 @@
     },
     {
       "path": "js/diagnostics/diagnosticContract.js",
-      "sha256": "075e035006443e58f3c706d0f9e452e0eefa58ec3da4ff2550c586cdd6d8cae0"
+      "sha256": "719bdc49a42d7ba8258d2cb4e1fc7471dde77367a527cdc0b720af19a9c72292"
     },
     {
       "path": "js/private/cloudSync.js",
-      "sha256": "e8426dd13982f0a4877ae341bb8c46d18e3fb04c5962da14d6b97d0b0aa1aee7"
+      "sha256": "c77c47074992e4b2b7291e1e576050f887a52a9f18cb849e50629ecc17fb6278"
     },
     {
       "path": "js/private/store.js",
       "sha256": "a7a72130a0bd2dc2e3606633beda8d972281de915289bf981953d6394ff10746"
     },
     {
+      "path": "learn/analysis.js",
+      "sha256": "e0ab724375d9206774ae1dc50d2baadfa58622297839156b294923ead5489a6a"
+    },
+    {
       "path": "learn/index.html",
-      "sha256": "a80c924c19e10eb19169ae0bab9701e8f9b3e054ab1c3e98f94afda5344aecdd"
+      "sha256": "11112ddd193d2a9e18630d5b8f46e187c50fa7dca8879deacdcbd6520d0e38d6"
     },
     {
       "path": "learn/notebook.js",
-      "sha256": "1449c4e7d425c30fc9fc0dcab174853bb78c8880c085e3b010519df7edbbd45e"
+      "sha256": "834bdadb529bbc0bdcbf6d8448f72e354bdec8499f989bbc51a5353071b0697a"
     },
     {
       "path": "learn/style.css",
-      "sha256": "bfeac950036a0e4cb054d58e733b28ff2d1394c0b608265090650be1d0908d61"
+      "sha256": "06e6a1903ccac3c0ed823abdc9b5741f7fafc7754c00781362f6dd76e13f4ae6"
     },
     {
       "path": "scripts/build-bundles.mjs",
@@ -650,7 +654,7 @@
     },
     {
       "path": "scripts/diagnostic-build.mjs",
-      "sha256": "20bc5fbf27affddd458e2e0e7f85ac8fca5811731f8a228c2347efcd9aadb5c1"
+      "sha256": "74b1eb26ea12196d631aa4c86f81d7aff6b0c42c376df15b1cc4f4a6163855af"
     },
     {
       "path": "templates/template_base.html",

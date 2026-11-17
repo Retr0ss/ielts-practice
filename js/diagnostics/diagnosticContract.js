@@ -49,7 +49,7 @@
     // Extend this list when an integration needs another shipped resource.
     const PROJECT_PATHS = Object.freeze([
         'index.html', 'js/app.js', 'js/main.js', 'js/utils/logger.js',
-        'learn/index.html', 'learn/notebook.js', 'learn/style.css',
+        'learn/index.html', 'learn/notebook.js', 'learn/analysis.js', 'learn/style.css',
         'js/private/store.js', 'js/private/cloudSync.js',
         'js/presentation/incident-center.js', 'js/presentation/message-center.js',
         'js/data/v2/dataKernel.js', 'js/data/v2/appData.js',

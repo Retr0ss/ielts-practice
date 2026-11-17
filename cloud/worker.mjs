@@ -1,3 +1,5 @@
+import { createAnalysisService } from './analysis/service.mjs';
+const analysisService = createAnalysisService();
 const encoder = new TextEncoder();
 const COOKIE = '__Host-atlas';
 const MAX_BODY = 450_000;
@@ -157,6 +159,12 @@ async function route(request, env) {
         return json({ error: '请先登录' }, 401);
     }
     if (!['GET', 'HEAD'].includes(request.method)) sameOrigin(request);
+    if (url.pathname === '/api/analysis/config' && request.method === 'GET') return json(await analysisService.settings(env));
+    if (url.pathname === '/api/analysis/status' && request.method === 'GET') return json(await analysisService.status(env,url.searchParams.get('id')));
+    if (url.pathname === '/api/analysis' && request.method === 'POST') {
+        const result = await analysisService.analyze(env, await body(request));
+        return json(result,result.status === 'pending' ? 202 : 200);
+    }
     if (url.pathname === '/api/session' && request.method === 'GET') return json({ authenticated: true });
     if (url.pathname === '/api/logout' && request.method === 'POST') {
         await env.DB.prepare('DELETE FROM sessions WHERE token_hash=?').bind(session.token_hash).run();
@@ -188,7 +196,7 @@ export default {
     async fetch(request, env) {
         let response;
         try { response = await route(request, env); }
-        catch (error) { response = json({ error: error.status ? error.message : '保存失败，请稍后重试' }, error.status || 500); }
+        catch (error) { response = json({ error: error.status ? error.message : '保存失败，请稍后重试', ...(error.code && error.status ? {code:error.code} : {}) }, error.status || 500); }
         const secured = new Response(response.body, response);
         secured.headers.set('Cache-Control', 'private, no-store');
         secured.headers.set('X-Content-Type-Options', 'nosniff');

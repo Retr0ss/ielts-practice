@@ -1,22 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DatabaseSync } from 'node:sqlite';
-import { readFileSync } from 'node:fs';
+import { createDatabase } from './helpers/d1.mjs';
 import worker, { sha256, writeChange } from '../../../cloud/worker.mjs';
 
-export function createDatabase() {
-    const sqlite = new DatabaseSync(':memory:');
-    sqlite.exec(readFileSync(new URL('../../../cloud/migrations/0001_private_learning.sql', import.meta.url), 'utf8'));
-    const db = { prepare(sql) {
-        let params = [];
-        const query = { bind(...values) { params = values; return query; },
-            async run() { const result = sqlite.prepare(sql).run(...params); return { meta: { changes: Number(result.changes) } }; },
-            async first() { return sqlite.prepare(sql).get(...params) || null; },
-            async all() { return { results: sqlite.prepare(sql).all(...params) }; } };
-        return query;
-    }, async batch(statements) { sqlite.exec('BEGIN'); try { const result = []; for (const statement of statements) result.push(await statement.run()); sqlite.exec('COMMIT'); return result; } catch (error) { sqlite.exec('ROLLBACK'); throw error; } }, close: () => sqlite.close() };
-    return db;
-}
 
 const note = (id, text = 'A long sentence.') => ({ id, text, analysis: '', source: 'self', category: 'grammar', status: 'review', createdAt: '2026-11-16T10:00:00Z', updatedAt: '2026-11-16T10:00:00Z' });
 const mutation = (id, operationId, baseVersion = 0, text) => ({ kind: 'note', id, operationId, baseVersion, deleted: false, data: note(id, text) });
@@ -100,6 +86,8 @@ test('shortcut token only appends notes; retries do not duplicate; token cannot 
         assert.equal((await db.prepare('SELECT * FROM changes').all()).results.length, 1);
         assert.equal((await call('/api/capture', { ...payload, text: 'changed retry' })).status, 409);
         assert.equal((await call('/api/changes')).status, 401);
+        assert.equal((await call('/api/analysis/config')).status, 401);
+        assert.equal((await call('/api/analysis', {text:'Policies matter.',category:'grammar',requestId:'capture-cannot-generate'})).status, 401);
         assert.equal((await call('/assets/bank.js')).status, 401);
     } finally { db.close(); }
 });

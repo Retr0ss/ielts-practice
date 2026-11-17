@@ -20,12 +20,13 @@
         button.onclick = () => Promise.resolve().then(handler).catch(error => tell(error.message));
         return button;
     }
-    function reset() { $('#note-form').reset(); $('#note-id').value = ''; editedAt = null; editorOperation = null; $('#editor-title').textContent = '留住一个疑问'; }
+    function reset() { $('#note-form').reset(); $('#note-id').value = ''; editedAt = null; editorOperation = null; $('#editor-title').textContent = '留住一个疑问'; window.dispatchEvent(new Event('atlas-note-editor-changed')); }
     function edit(row) {
         const note = row.data;
         $('#note-id').value = note.id; $('#note-text').value = note.text; $('#note-analysis').value = note.analysis;
         $('#note-source').value = note.source; $('#note-category').value = note.category; editedAt = note.updatedAt; editorOperation = row.operationId;
         $('#editor-title').textContent = '补充你的理解'; $('#note-text').focus(); window.scrollTo({ top: 0, behavior: 'smooth' });
+        window.dispatchEvent(new Event('atlas-note-editor-changed'));
     }
     async function render() {
         const rows = await store.list();

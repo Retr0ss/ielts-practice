@@ -15,10 +15,10 @@
         document.querySelectorAll('[data-atlas-status]').forEach(node => { node.textContent = message; });
         global.dispatchEvent(new CustomEvent('atlas-private-status', { detail: message }));
     }
-    async function api(path, payload) {
+    async function api(path, payload, options = {}) {
         const controller = new AbortController();
         requests.add(controller);
-        const timeout = setTimeout(() => controller.abort(), 15000);
+        const timeout = setTimeout(() => controller.abort(), Math.min(60000, Number(options.timeoutMs) || 15000));
         try {
             const response = await fetch(path, { credentials: 'same-origin', cache: 'no-store', signal: controller.signal,
                 method: payload === undefined ? 'GET' : 'POST',
@@ -26,7 +26,9 @@
                 body: payload === undefined ? undefined : JSON.stringify(payload) });
             const result = await response.json();
             if (response.status === 401) throw new Error('登录已过期；本地内容已保留，请重新登录');
-            if (!response.ok && !(response.status === 409 && Object.hasOwn(result, 'current'))) throw new Error(result.error || '同步失败');
+            if (!response.ok && !(response.status === 409 && Object.hasOwn(result, 'current'))) {
+                throw Object.assign(new Error(result.error || '请求失败'), { status:response.status, code:result.code });
+            }
             return result;
         } finally { clearTimeout(timeout); requests.delete(controller); }
     }

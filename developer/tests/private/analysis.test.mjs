@@ -16,7 +16,7 @@ const openaiSuccess = () => Response.json({status:'completed',output:[
 test('read-only DeepSeek check verifies models and availability without model calls or quota writes',async()=>{
     const DB=createDatabase();const requests=[];const env=envFor(DB);
     const service=createAnalysisService({fetchImpl:async(url,options)=>{
-        requests.push(url);assert.equal(options.method,'GET');assert.equal(options.body,undefined);
+        requests.push(url);assert.equal(options.method,'GET');assert.equal(options.body,undefined);assert.equal(options.redirect,'manual');
         assert.equal(options.headers.Authorization,'Bearer '+env.DEEPSEEK_API_KEY);
         return url.endsWith('/models') ? Response.json({data:[{id:'deepseek-flash'}]})
             : Response.json({is_available:true,balance_infos:[{total_balance:'do-not-expose-account-balance'}]});
@@ -27,6 +27,19 @@ test('read-only DeepSeek check verifies models and availability without model ca
         assert.deepEqual(requests,['https://api.deepseek.com/models','https://api.deepseek.com/user/balance']);
         assert.equal((await service.settings(env)).usage.used,0);
         assert.ok(!JSON.stringify(check).includes(env.DEEPSEEK_API_KEY));assert.ok(!JSON.stringify(check).includes('do-not-expose'));
+    }finally{DB.close();}
+});
+
+test('provider redirects are rejected without following or exposing their location',async()=>{
+    const DB=createDatabase();let calls=0;
+    const service=createAnalysisService({fetchImpl:async(url,options)=>{
+        calls++;assert.equal(options.redirect,'manual');
+        return new Response(null,{status:307,headers:{Location:'https://untrusted.test/private-location'}});
+    }});
+    try{
+        const check=await service.check(envFor(DB),{provider:'deepseek'});assert.equal(check.code,'PROVIDER_REDIRECT');assert.equal(check.httpStatus,307);assert.equal(calls,1);
+        await assert.rejects(service.analyze(envFor(DB),input()),error=>error.code==='PROVIDER_REDIRECT'&&error.diagnostic.httpStatus===307&&!error.message.includes('untrusted'));
+        assert.equal(calls,2);assert.ok(!JSON.stringify(check).includes('private-location'));
     }finally{DB.close();}
 });
 
@@ -112,7 +125,7 @@ test('OpenAI Responses uses its own key, endpoint, model and strict schema witho
     const service=createAnalysisService({fetchImpl:async(url,options)=>{
         calls++;assert.equal(url,'https://api.openai.com/v1/responses');
         assert.equal(options.headers.Authorization,'Bearer '+env.OPENAI_API_KEY);
-        assert.equal(options.redirect,'error');
+        assert.equal(options.redirect,'manual');
         const body=JSON.parse(options.body);
         assert.equal(body.model,'gpt-5.4-mini');assert.equal(body.store,false);assert.equal(body.stream,false);
         assert.equal(body.max_output_tokens,2500);assert.equal(body.reasoning.effort,'none');

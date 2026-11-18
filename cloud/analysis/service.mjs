@@ -20,7 +20,8 @@ const instructions = `你是帮助中国学习者备考 IELTS 7 分以上的英�
 const SAFE_ERROR = Symbol('safe-analysis-error');
 function error(status, code, message) { return Object.assign(new Error(message), { status, code, [SAFE_ERROR]:true }); }
 function httpFailure(status) {
-    const [code,message] = status===401||status===403 ? ['PROVIDER_AUTH','模型服务授权失败，请检查服务器 API Key 是否正确、有效']
+    const [code,message] = status>=300&&status<400 ? ['PROVIDER_REDIRECT','模型接口返回重定向，已停止跟随，请检查 API 基础地址']
+        : status===401||status===403 ? ['PROVIDER_AUTH','模型服务授权失败，请检查服务器 API Key 是否正确、有效']
         : status===402 ? ['PROVIDER_BALANCE','模型 API 余额不足，请到服务商开放平台检查余额']
         : status===404 ? ['MODEL_UNAVAILABLE','模型或接口不存在，请检查模型名称和 API 基础地址']
         : status===400||status===422 ? ['PROVIDER_REQUEST','模型服务拒绝了请求参数，请检查模型配置']
@@ -170,7 +171,7 @@ export function createAnalysisService({ fetchImpl = (...args)=>fetch(...args), n
             if (config.issue && config.issue !== 'DISABLED') throw configurationFailure(config);
             stage = 'models';
             const modelsUrl = config.endpoint.replace(/\/(?:chat\/completions|responses)$/,'/models');
-            const options = {method:'GET',redirect:'error',signal:controller.signal,headers:{Authorization:'Bearer '+config.key}};
+            const options = {method:'GET',redirect:'manual',signal:controller.signal,headers:{Authorization:'Bearer '+config.key}};
             const response = await fetchImpl(modelsUrl,options);
             upstreamStatus = response.status;
             if (!response.ok) throw httpFailure(response.status);
@@ -248,7 +249,9 @@ export function createAnalysisService({ fetchImpl = (...args)=>fetch(...args), n
         let upstreamStatus;
         let result;
         try {
-            const response = await fetchImpl(config.endpoint, { method:'POST', redirect:'error', signal:controller.signal,
+            // workerd rejects redirect:"error" before sending a request.
+            // manual + explicit non-2xx handling never forwards credentials.
+            const response = await fetchImpl(config.endpoint, { method:'POST', redirect:'manual', signal:controller.signal,
                 headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+config.key },
                 body:JSON.stringify(providerRequest(config,text,input.category)) });
             upstreamStatus = response.status;

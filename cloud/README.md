@@ -143,11 +143,13 @@ OpenAI 使用固定官方地址 `https://api.openai.com/v1/responses`，默认 `
 
 选择服务后点“检查连接”，无需填写原句。Worker 用同一运行时密钥发起只读的 `GET /models`，确认授权与所选模型是否在列表中；DeepSeek 官方地址还会读取 `GET /user/balance` 的 `is_available`。不发送原句、不调用生成接口、不预留每日解析次数；不会返回密钥、余额金额或完整服务商错误正文。见 [模型列表](https://api-docs.deepseek.com/api/list-models/) 与 [可用余额](https://api-docs.deepseek.com/api/get-user-balance/)。OpenAI 和兼容服务的只读检查不查询余额，实际生成仍需单独验证。
 
-检查结果可截图用于排查：授权失败 `PROVIDER_AUTH`、余额不可用 `PROVIDER_BALANCE`、模型/地址问题 `MODEL_UNAVAILABLE`、额度/频率受限 `PROVIDER_LIMIT`、连接失败 `CHECK_NETWORK`、检查超时 `CHECK_TIMEOUT`。同时显示失败步骤和服务商 HTTP 状态（如有）。普通页面提示“已配置”只表示发现配置，不代表真实生成已经成功。
+检查结果可截图用于排查：授权失败 `PROVIDER_AUTH`、余额不可用 `PROVIDER_BALANCE`、模型/地址问题 `MODEL_UNAVAILABLE`、重定向被拒绝 `PROVIDER_REDIRECT`、额度/频率受限 `PROVIDER_LIMIT`、连接失败 `CHECK_NETWORK`、检查超时 `CHECK_TIMEOUT`。同时显示失败步骤和服务商 HTTP 状态（如有）。普通页面提示“已配置”只表示发现配置，不代表真实生成已经成功。
 
 密钥在写入请求头前检查格式。含中文、内部空格/换行或 `Bearer ` 前缀时，显示 `INVALID_KEY_FORMAT`，不发起模型调用、不计每日次数。Secret 中应填写原始 API Key；首尾空白会去除。不要把密钥截图或发送到聊天。
 
 生成接口的连接失败、响应接收中断、结果处理与缓存保存分开处理，只返回固定错误码和安全的阶段信息。若模型已返回有效解析、但缓存或次数刷新失败，仍展示解析并提示先保存，避免误导用户重复付费调用；原文与已有笔记保留。
+
+所有服务端请求使用 Workers 支持的 `redirect: "manual"`，将 3xx 明确作为错误处理，不跟随 `Location` 转发授权信息。Workers 不支持 Fetch 标准的 `redirect: "error"`，使用该值会在构造请求时直接抛异常；Node 下的响应模拟不足以覆盖此平台差异。见 [Cloudflare Request 文档](https://developers.cloudflare.com/workers/runtime-apis/request/)。
 
 ## 例句朗读与点词查义
 
@@ -179,6 +181,7 @@ AI 解析预览中的英文例句可直接播放、点词。填入解析框后�
 ```bash
 node developer/tests/private/worker.test.mjs
 node developer/tests/private/analysis.test.mjs
+node developer/tests/private/analysis_runtime.test.mjs
 node developer/tests/js/appDataV2.test.js
 node scripts/build-bundles.mjs --check
 python developer/tests/ci/run_static_suite.py

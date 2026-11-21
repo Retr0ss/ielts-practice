@@ -71,3 +71,8 @@ __pycache__/
 /developer/doc/Intensive-Reading-Computer-Use-Evidence/
 /developer/doc/Intensive-Reading-Computer-Use-GitHub-Comment.md
 /developer/doc/Intensive-Reading-Computer-Use-Report.md
+
+# Keep private handoff copies outside public Git history.
+/cloud/HANDOFF-MAC-MINI.md
+/IELTS-Atlas-Mac-Mini.md
+/private-handoff/
